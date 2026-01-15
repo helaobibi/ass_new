@@ -1,0 +1,187 @@
+#include <windows.h>
+#include <commctrl.h>
+
+/* 指定资源文件使用 UTF-8 编码 (代码页 65001) */
+#pragma code_page(65001)
+
+/* Dialog IDs */
+#define IDD_ASSET_EDIT           4001
+#define IDD_CATEGORY_MANAGE      4002
+#define IDD_EMPLOYEE_MANAGE      4003
+
+/* Asset Edit Dialog Controls */
+#define IDA_EDIT_CODE          3001
+#define IDA_EDIT_NAME          3002
+#define IDA_COMBO_CATEGORY     3003
+#define IDA_EDIT_USER          3004
+#define IDA_COMBO_DEPT         3005
+#define IDA_EDIT_DATE          3006
+#define IDA_EDIT_PRICE         3007
+#define IDA_EDIT_LOCATION      3008
+#define IDA_COMBO_STATUS       3009
+#define IDA_EDIT_REMARK        3010
+
+/* Category Manage Dialog Controls */
+#define IDC_LIST_CATEGORIES     3101
+#define IDC_EDIT_CATEGORY       3102
+#define IDC_BTN_ADD             3103
+#define IDC_BTN_EDIT            3104
+#define IDC_BTN_DELETE          3105
+
+/* Employee Manage Dialog Controls */
+#define IDC_LIST_DEPARTMENTS   3200
+#define IDC_LIST_EMPLOYEES     3201
+#define IDE_EDIT_NAME          3202
+#define IDE_COMBO_DEPT         3203
+#define IDE_EDIT_POSITION      3204
+#define IDE_EDIT_PHONE         3205
+#define IDE_EDIT_EMAIL         3206
+#define IDE_EDIT_REMARK        3207
+#define IDE_BTN_ADD            3208
+#define IDE_BTN_EDIT           3209
+#define IDE_BTN_DELETE         3210
+#define IDE_EDIT_DEPT_NAME     3211
+#define IDE_BTN_ADD_DEPT       3212
+#define IDE_BTN_DEL_DEPT       3213
+#define IDE_EDIT_SEARCH        3215
+#define IDE_COMBO_FILTER_DEPT  3216
+
+/* Version info */
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", "Asset Manager"
+            VALUE "FileDescription", "Asset Management System"
+            VALUE "FileVersion", "1.0.0.0"
+            VALUE "InternalName", "AssetManager"
+            VALUE "LegalCopyright", "Copyright (C) 2024"
+            VALUE "OriginalFilename", "AssetManager.exe"
+            VALUE "ProductName", "Asset Management System"
+            VALUE "ProductVersion", "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
+
+/* Asset Edit Dialog */
+IDD_ASSET_EDIT DIALOGEX 0, 0, 360, 320
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "资产编辑"
+FONT 9, "MS Shell Dlg"
+BEGIN
+    LTEXT           "资产编号*:", -1, 15, 15, 60, 12
+    EDITTEXT        IDA_EDIT_CODE, 80, 12, 100, 14
+
+    LTEXT           "资产名称*:", -1, 195, 15, 60, 12
+    EDITTEXT        IDA_EDIT_NAME, 260, 12, 85, 14
+
+    LTEXT           "分类:", -1, 15, 45, 60, 12
+    COMBOBOX        IDA_COMBO_CATEGORY, 80, 42, 100, 200, CBS_DROPDOWNLIST | WS_VSCROLL
+
+    LTEXT           "使用人:", -1, 195, 45, 60, 12
+    EDITTEXT        IDA_EDIT_USER, 260, 42, 85, 14
+
+    LTEXT           "部门:", -1, 15, 75, 60, 12
+    COMBOBOX        IDA_COMBO_DEPT, 80, 72, 100, 200, CBS_DROPDOWNLIST | WS_VSCROLL
+
+    LTEXT           "购入日期:", -1, 195, 75, 60, 12
+    EDITTEXT        IDA_EDIT_DATE, 260, 72, 85, 14
+
+    LTEXT           "金额:", -1, 15, 105, 60, 12
+    EDITTEXT        IDA_EDIT_PRICE, 80, 102, 100, 14
+
+    LTEXT           "存放位置:", -1, 195, 105, 60, 12
+    EDITTEXT        IDA_EDIT_LOCATION, 260, 102, 85, 14
+
+    LTEXT           "状态:", -1, 15, 135, 60, 12
+    COMBOBOX        IDA_COMBO_STATUS, 80, 132, 100, 200, CBS_DROPDOWNLIST | WS_VSCROLL
+
+    LTEXT           "备注:", -1, 15, 165, 60, 12
+    EDITTEXT        IDA_EDIT_REMARK, 80, 162, 265, 60, ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
+
+    DEFPUSHBUTTON   "确定", IDOK, 180, 280, 50, 14
+    PUSHBUTTON      "取消", IDCANCEL, 240, 280, 50, 14
+END
+
+/* Category Manage Dialog */
+IDD_CATEGORY_MANAGE DIALOGEX 0, 0, 320, 260
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "分类管理"
+FONT 9, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "分类列表", -1, 10, 10, 200, 180
+    CONTROL         "", IDC_LIST_CATEGORIES, "SysListView32", WS_BORDER | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL, 20, 25, 180, 155
+
+    GROUPBOX        "编辑分类", -1, 220, 10, 90, 120
+    LTEXT           "名称:", -1, 230, 35, 40, 12
+    EDITTEXT        IDC_EDIT_CATEGORY, 230, 50, 70, 14
+
+    PUSHBUTTON      "添加", IDC_BTN_ADD, 230, 75, 70, 16
+    PUSHBUTTON      "编辑", IDC_BTN_EDIT, 230, 95, 70, 16
+    PUSHBUTTON      "删除", IDC_BTN_DELETE, 230, 115, 70, 16
+
+    PUSHBUTTON      "关闭", IDOK, 130, 200, 60, 16
+END
+
+/* Employee Manage Dialog */
+IDD_EMPLOYEE_MANAGE DIALOGEX 0, 0, 620, 340
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "人员管理"
+FONT 9, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "部门列表", -1, 10, 10, 140, 280
+    CONTROL         "", IDC_LIST_DEPARTMENTS, "SysListView32", WS_BORDER | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL, 20, 25, 120, 195
+    LTEXT           "部门名称:", -1, 20, 225, 50, 12
+    EDITTEXT        IDE_EDIT_DEPT_NAME, 20, 240, 120, 14
+    PUSHBUTTON      "添加部门", IDE_BTN_ADD_DEPT, 20, 260, 55, 16
+    PUSHBUTTON      "删除部门", IDE_BTN_DEL_DEPT, 85, 260, 55, 16
+
+    GROUPBOX        "员工列表", -1, 160, 10, 280, 280
+    LTEXT           "搜索:", -1, 170, 25, 35, 12
+    EDITTEXT        IDE_EDIT_SEARCH, 205, 22, 100, 14, ES_AUTOHSCROLL
+    LTEXT           "部门:", -1, 315, 25, 25, 12
+    COMBOBOX        IDE_COMBO_FILTER_DEPT, 340, 22, 90, 150, CBS_DROPDOWNLIST | WS_VSCROLL
+    CONTROL         "", IDC_LIST_EMPLOYEES, "SysListView32", WS_BORDER | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL, 170, 42, 260, 238
+
+    GROUPBOX        "编辑员工", -1, 450, 10, 160, 280
+    LTEXT           "姓名*:", -1, 460, 35, 50, 12
+    EDITTEXT        IDE_EDIT_NAME, 510, 32, 90, 14
+
+    LTEXT           "部门:", -1, 460, 60, 50, 12
+    COMBOBOX        IDE_COMBO_DEPT, 510, 57, 90, 150, CBS_DROPDOWNLIST | WS_VSCROLL
+
+    LTEXT           "职位:", -1, 460, 85, 50, 12
+    EDITTEXT        IDE_EDIT_POSITION, 510, 82, 90, 14
+
+    LTEXT           "电话:", -1, 460, 110, 50, 12
+    EDITTEXT        IDE_EDIT_PHONE, 510, 107, 90, 14
+
+    LTEXT           "邮箱:", -1, 460, 135, 50, 12
+    EDITTEXT        IDE_EDIT_EMAIL, 510, 132, 90, 14
+
+    LTEXT           "备注:", -1, 460, 160, 50, 12
+    EDITTEXT        IDE_EDIT_REMARK, 510, 157, 90, 40, ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
+
+    PUSHBUTTON      "添加", IDE_BTN_ADD, 460, 210, 65, 16
+    PUSHBUTTON      "编辑", IDE_BTN_EDIT, 535, 210, 65, 16
+    PUSHBUTTON      "删除", IDE_BTN_DELETE, 460, 232, 65, 16
+
+    PUSHBUTTON      "关闭", IDOK, 280, 305, 60, 16
+END
