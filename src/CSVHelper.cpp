@@ -9,6 +9,7 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <unordered_map>
 
 bool CSVHelper::ShowSaveDialog(HWND hWnd, std::wstring& filePath) {
     OPENFILENAMEW ofn = {0};
@@ -181,10 +182,28 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
     int skipCount = 0;
     std::vector<std::string> errors;
 
-    // 缓存数据
+    // 缓存数据并建立哈希表索引
     std::vector<Category> categories = db.GetAllCategories();
     std::vector<Department> departments = db.GetAllDepartments();
     std::vector<Employee> employees = db.GetAllEmployees();
+
+    // 建立名称到ID的哈希表，将查找复杂度从 O(n) 降低到 O(1)
+    std::unordered_map<std::string, int> categoryMap;
+    for (const auto& cat : categories) {
+        categoryMap[cat.name] = cat.id;
+    }
+
+    std::unordered_map<std::string, int> departmentMap;
+    for (const auto& dept : departments) {
+        departmentMap[dept.name] = dept.id;
+    }
+
+    // 员工查找需要考虑部门，使用 "员工名_部门ID" 作为键
+    std::unordered_map<std::string, int> employeeMap;
+    for (const auto& emp : employees) {
+        std::string key = emp.name + "_" + std::to_string(emp.departmentId);
+        employeeMap[key] = emp.id;
+    }
 
     std::string line;
     bool isFirstLine = true;
@@ -268,19 +287,17 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
             if (fields.size() > 2 && !fields[2].empty()) {
                 std::string catName = trim(fields[2]);
 
-                // 查找分类
-                for (const auto& cat : categories) {
-                    if (cat.name == catName) {
-                        categoryId = cat.id;
-                        break;
-                    }
-                }
-                // 不存在则创建
-                if (categoryId < 0) {
+                // 使用哈希表查找分类
+                auto it = categoryMap.find(catName);
+                if (it != categoryMap.end()) {
+                    categoryId = it->second;
+                } else {
+                    // 不存在则创建
                     Category newCat{0, catName};
                     if (db.AddCategory(newCat)) {
                         categoryId = newCat.id;
                         categories.push_back(newCat);
+                        categoryMap[catName] = newCat.id;
                     }
                 }
             }
@@ -294,39 +311,34 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
                     deptName = trim(fields[4]);
                 }
 
-                // 查找或创建部门
+                // 使用哈希表查找或创建部门
                 int deptId = -1;
                 if (!deptName.empty()) {
-                    for (const auto& dept : departments) {
-                        if (dept.name == deptName) {
-                            deptId = dept.id;
-                            break;
-                        }
-                    }
-                    if (deptId < 0) {
+                    auto it = departmentMap.find(deptName);
+                    if (it != departmentMap.end()) {
+                        deptId = it->second;
+                    } else {
                         Department newDept{0, deptName};
                         if (db.AddDepartment(newDept)) {
                             deptId = newDept.id;
                             departments.push_back(newDept);
+                            departmentMap[deptName] = newDept.id;
                         }
                     }
                 }
 
-                // 查找员工
-                for (const auto& emp : employees) {
-                    if (emp.name == userName &&
-                        (deptId < 0 || emp.departmentId == deptId)) {
-                        userId = emp.id;
-                        break;
-                    }
-                }
-
-                // 不存在则创建
-                if (userId < 0) {
+                // 使用哈希表查找员工
+                std::string empKey = userName + "_" + std::to_string(deptId);
+                auto it = employeeMap.find(empKey);
+                if (it != employeeMap.end()) {
+                    userId = it->second;
+                } else {
+                    // 不存在则创建
                     Employee newEmp{0, userName, deptId};
                     if (db.AddEmployee(newEmp)) {
                         userId = newEmp.id;
                         employees.push_back(newEmp);
+                        employeeMap[empKey] = newEmp.id;
                     }
                 }
             }
