@@ -19,7 +19,6 @@ set(SOURCES
     src/CategoryManageDialog.cpp
     src/EmployeeManageDialog.cpp
     src/CSVHelper.cpp
-    src/Logger.cpp
     include/sqlite3.c
 )
 
@@ -32,7 +31,6 @@ set(HEADERS
     include/CategoryManageDialog.h
     include/EmployeeManageDialog.h
     include/CSVHelper.h
-    include/Logger.h
 )
 
 # 资源文件

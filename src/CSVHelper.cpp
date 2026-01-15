@@ -4,11 +4,11 @@
  */
 
 #include "CSVHelper.h"
-#include "Logger.h"
 #include <commdlg.h>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 bool CSVHelper::ShowSaveDialog(HWND hWnd, std::wstring& filePath) {
     OPENFILENAMEW ofn = {0};
@@ -63,21 +63,25 @@ std::string CSVHelper::EscapeCSVField(const std::string& field) {
         return field;
     }
 
-    std::string result = "\"";
+    // 预分配内存：原字符串长度 + 2个引号 + 可能的转义字符
+    std::string result;
+    result.reserve(field.size() + 2 + std::count(field.begin(), field.end(), '"'));
+    result.push_back('"');
     for (char c : field) {
         if (c == '"') {
-            result += "\"\"";  // 转义引号
+            result.append("\"\"", 2);  // 转义引号
         } else {
-            result += c;
+            result.push_back(c);
         }
     }
-    result += "\"";
+    result.push_back('"');
     return result;
 }
 
 std::vector<std::string> CSVHelper::ParseCSVLine(const std::string& line) {
     std::vector<std::string> result;
     std::string field;
+    field.reserve(64);  // 预分配合理大小
     bool inQuotes = false;
 
     for (size_t i = 0; i < line.length(); i++) {
@@ -86,19 +90,20 @@ std::vector<std::string> CSVHelper::ParseCSVLine(const std::string& line) {
         if (c == '"') {
             if (inQuotes && i + 1 < line.length() && line[i + 1] == '"') {
                 // 转义的引号
-                field += '"';
+                field.push_back('"');
                 i++;
             } else {
                 inQuotes = !inQuotes;
             }
         } else if (c == ',' && !inQuotes) {
-            result.push_back(field);
+            result.push_back(std::move(field));
             field.clear();
+            field.reserve(64);
         } else {
-            field += c;
+            field.push_back(c);
         }
     }
-    result.push_back(field);
+    result.push_back(std::move(field));
 
     return result;
 }
@@ -149,27 +154,17 @@ bool CSVHelper::ExportToCSV(HWND hWnd, Database& db) {
 }
 
 bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
-    LOG_INFO("========== 开始CSV导入 ==========");
-
     std::wstring filePath;
     if (!ShowOpenDialog(hWnd, filePath)) {
-        LOG_INFO("用户取消了文件选择");
         return false;
     }
-
-    // 转换文件路径为UTF-8用于日志
-    char pathBuf[1024];
-    WideCharToMultiByte(65001, 0, filePath.c_str(), -1, pathBuf, 1024, nullptr, nullptr);
-    LOG_INFO("选择的文件: " + std::string(pathBuf));
 
     // 使用宽字符路径打开文件
     std::ifstream file(filePath.c_str(), std::ios::in | std::ios::binary);
     if (!file.is_open()) {
-        LOG_ERROR("无法打开文件: " + std::string(pathBuf));
         MessageBoxW(hWnd, L"无法打开文件", L"错误", MB_OK | MB_ICONERROR);
         return false;
     }
-    LOG_INFO("文件打开成功");
 
     // 跳过 UTF-8 BOM
     unsigned char bom[3] = {0};
@@ -177,13 +172,9 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
     bool isUtf8 = (bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF);
     if (!isUtf8) {
         file.seekg(0);
-        LOG_INFO("文件编码: GBK");
-    } else {
-        LOG_INFO("文件编码: UTF-8");
     }
 
     // 开始事务
-    LOG_INFO("开始数据库事务");
     db.BeginTransaction();
 
     int successCount = 0;
@@ -191,25 +182,19 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
     std::vector<std::string> errors;
 
     // 缓存数据
-    LOG_INFO("加载缓存数据...");
     std::vector<Category> categories = db.GetAllCategories();
     std::vector<Department> departments = db.GetAllDepartments();
     std::vector<Employee> employees = db.GetAllEmployees();
-    LOG_INFO("缓存数据加载完成 - 分类: " + std::to_string(categories.size()) +
-             ", 部门: " + std::to_string(departments.size()) +
-             ", 员工: " + std::to_string(employees.size()));
 
     std::string line;
     bool isFirstLine = true;
     int lineNumber = 0;
 
-    LOG_INFO("开始逐行解析CSV文件...");
     while (std::getline(file, line)) {
         lineNumber++;
 
         // 跳过空行
         if (line.empty()) {
-            LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 空行，跳过");
             continue;
         }
 
@@ -239,7 +224,6 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
         if (isFirstLine) {
             isFirstLine = false;
             if (line.find("资产编号") != std::string::npos) {
-                LOG_INFO("第" + std::to_string(lineNumber) + "行: 表头行，跳过");
                 continue;
             }
         }
@@ -247,11 +231,8 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
         // 解析行
         std::vector<std::string> fields = ParseCSVLine(line);
         if (fields.size() < 2) {
-            LOG_WARNING("第" + std::to_string(lineNumber) + "行: 字段不足（需要至少2个字段），跳过");
             continue;
         }
-
-        LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 开始处理，字段数=" + std::to_string(fields.size()));
 
         try {
             std::string assetCode = fields[0];
@@ -259,12 +240,11 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
 
             // 验证必填项
             if (assetCode.empty() || assetName.empty()) {
-                LOG_WARNING("第" + std::to_string(lineNumber) + "行: 资产编号或名称为空，跳过");
                 continue;
             }
 
             // 去除首尾空格
-            auto trim = [](std::string s) {
+            auto trim = [](const std::string& s) -> std::string {
                 size_t start = s.find_first_not_of(" \t\r\n");
                 if (start == std::string::npos) return std::string();
                 size_t end = s.find_last_not_of(" \t\r\n");
@@ -274,47 +254,35 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
             assetCode = trim(assetCode);
             assetName = trim(assetName);
 
-            LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 资产编号=" + assetCode + ", 名称=" + assetName);
-
             // 检查是否已存在
             Asset existing;
             if (db.GetAssetByCode(assetCode, existing)) {
                 skipCount++;
                 std::string msg = "资产编号 " + assetCode + " 已存在，跳过";
                 errors.push_back(msg);
-                LOG_WARNING("第" + std::to_string(lineNumber) + "行: " + msg);
                 continue;
             }
-            LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 资产编号不存在，可以添加");
 
             // 处理分类
             int categoryId = -1;
             if (fields.size() > 2 && !fields[2].empty()) {
                 std::string catName = trim(fields[2]);
-                LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 分类名称=" + catName);
 
                 // 查找分类
                 for (const auto& cat : categories) {
                     if (cat.name == catName) {
                         categoryId = cat.id;
-                        LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 找到已存在的分类，ID=" + std::to_string(categoryId));
                         break;
                     }
                 }
                 // 不存在则创建
                 if (categoryId < 0) {
-                    LOG_INFO("第" + std::to_string(lineNumber) + "行: 分类不存在，创建新分类: " + catName);
                     Category newCat{0, catName};
                     if (db.AddCategory(newCat)) {
                         categoryId = newCat.id;
                         categories.push_back(newCat);
-                        LOG_INFO("第" + std::to_string(lineNumber) + "行: 分类创建成功，ID=" + std::to_string(categoryId));
-                    } else {
-                        LOG_ERROR("第" + std::to_string(lineNumber) + "行: 分类创建失败: " + catName);
                     }
                 }
-            } else {
-                LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 无分类信息");
             }
 
             // 处理部门和员工
@@ -325,7 +293,6 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
                 if (fields.size() > 4) {
                     deptName = trim(fields[4]);
                 }
-                LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 使用人=" + userName + ", 部门=" + (deptName.empty() ? "(空)" : deptName));
 
                 // 查找或创建部门
                 int deptId = -1;
@@ -333,19 +300,14 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
                     for (const auto& dept : departments) {
                         if (dept.name == deptName) {
                             deptId = dept.id;
-                            LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 找到已存在的部门，ID=" + std::to_string(deptId));
                             break;
                         }
                     }
                     if (deptId < 0) {
-                        LOG_INFO("第" + std::to_string(lineNumber) + "行: 部门不存在，创建新部门: " + deptName);
                         Department newDept{0, deptName};
                         if (db.AddDepartment(newDept)) {
                             deptId = newDept.id;
                             departments.push_back(newDept);
-                            LOG_INFO("第" + std::to_string(lineNumber) + "行: 部门创建成功，ID=" + std::to_string(deptId));
-                        } else {
-                            LOG_ERROR("第" + std::to_string(lineNumber) + "行: 部门创建失败: " + deptName);
                         }
                     }
                 }
@@ -355,25 +317,18 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
                     if (emp.name == userName &&
                         (deptId < 0 || emp.departmentId == deptId)) {
                         userId = emp.id;
-                        LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 找到已存在的员工，ID=" + std::to_string(userId));
                         break;
                     }
                 }
 
                 // 不存在则创建
                 if (userId < 0) {
-                    LOG_INFO("第" + std::to_string(lineNumber) + "行: 员工不存在，创建新员工: " + userName);
-                    Employee newEmp{0, userName, deptId, "", "", "", ""};
+                    Employee newEmp{0, userName, deptId};
                     if (db.AddEmployee(newEmp)) {
                         userId = newEmp.id;
                         employees.push_back(newEmp);
-                        LOG_INFO("第" + std::to_string(lineNumber) + "行: 员工创建成功，ID=" + std::to_string(userId));
-                    } else {
-                        LOG_ERROR("第" + std::to_string(lineNumber) + "行: 员工创建失败: " + userName);
                     }
                 }
-            } else {
-                LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 无使用人信息");
             }
 
             // 其他字段
@@ -387,11 +342,6 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
                                 ? trim(fields[8]) : "在用";
             std::string remark = (fields.size() > 9) ? trim(fields[9]) : "";
 
-            LOG_DEBUG("第" + std::to_string(lineNumber) + "行: 购入日期=" + purchaseDate +
-                     ", 价格=" + std::to_string(price) +
-                     ", 位置=" + location +
-                     ", 状态=" + status);
-
             // 创建资产
             Asset asset{0};
             asset.assetCode = assetCode;
@@ -404,14 +354,8 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
             asset.status = status;
             asset.remark = remark;
 
-            LOG_INFO("第" + std::to_string(lineNumber) + "行: 准备添加资产 - 编号=" + assetCode +
-                    ", 名称=" + assetName +
-                    ", 分类ID=" + std::to_string(categoryId) +
-                    ", 使用人ID=" + std::to_string(userId));
-
             if (db.AddAsset(asset)) {
                 successCount++;
-                LOG_INFO("第" + std::to_string(lineNumber) + "行: ✓ 资产添加成功，新ID=" + std::to_string(asset.id));
             } else {
                 std::string errMsg = "添加资产 " + assetCode + " 失败";
                 std::string dbErr = db.GetLastError();
@@ -419,28 +363,18 @@ bool CSVHelper::ImportFromCSV(HWND hWnd, Database& db) {
                     errMsg += " (数据库错误: " + dbErr + ")";
                 }
                 errors.push_back(errMsg);
-                LOG_ERROR("第" + std::to_string(lineNumber) + "行: ✗ " + errMsg);
             }
 
         } catch (const std::exception& e) {
             std::string errMsg = std::string("解析行失败: ") + e.what();
             errors.push_back(errMsg);
-            LOG_ERROR("第" + std::to_string(lineNumber) + "行: 异常 - " + errMsg);
         }
     }
 
     file.close();
-    LOG_INFO("CSV文件解析完成，共处理 " + std::to_string(lineNumber) + " 行");
 
     // 提交事务
-    LOG_INFO("提交数据库事务...");
     db.Commit();
-    LOG_INFO("事务提交成功");
-
-    LOG_INFO("========== CSV导入完成 ==========");
-    LOG_INFO("成功导入: " + std::to_string(successCount) + " 条");
-    LOG_INFO("跳过: " + std::to_string(skipCount) + " 条");
-    LOG_INFO("错误: " + std::to_string(errors.size()) + " 条");
 
     // 显示结果
     wchar_t resultMsg[1024];

@@ -10,8 +10,6 @@
 #include "CSVHelper.h"
 #include <commdlg.h>
 #include <windowsx.h>
-#include <sstream>
-#include <iomanip>
 #include <algorithm>
 
 // 全局指针
@@ -243,11 +241,9 @@ bool MainWindow::CreateControls() {
 
     ComboBox_AddString(m_hCategoryCombo, L"全部");
     for (const auto& cat : m_categories) {
-        int len = MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, nullptr, 0);
-        wchar_t* wname = new wchar_t[len];
-        MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, wname, len);
+        wchar_t wname[256];
+        MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, wname, 256);
         ComboBox_AddString(m_hCategoryCombo, wname);
-        delete[] wname;
     }
     ComboBox_SetCurSel(m_hCategoryCombo, 0);
 
@@ -293,6 +289,7 @@ void MainWindow::LoadData() {
 void MainWindow::RefreshListView() {
     ListView_DeleteAllItems(m_hListView);
 
+    wchar_t buf[256];
     for (size_t i = 0; i < m_assets.size(); i++) {
         const Asset& asset = m_assets[i];
 
@@ -302,7 +299,6 @@ void MainWindow::RefreshListView() {
         lvi.iSubItem = 0;
 
         // ID
-        wchar_t buf[256];
         _itow_s(asset.id, buf, 10);
         lvi.pszText = buf;
         ListView_InsertItem(m_hListView, &lvi);
@@ -360,11 +356,9 @@ void MainWindow::RefreshCategoryCombo() {
 
     // 添加所有分类
     for (const auto& cat : m_categories) {
-        int len = MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, nullptr, 0);
-        wchar_t* wname = new wchar_t[len];
-        MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, wname, len);
+        wchar_t wname[256];
+        MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, wname, 256);
         ComboBox_AddString(m_hCategoryCombo, wname);
-        delete[] wname;
     }
 
     // 恢复选择（如果索引仍然有效）
@@ -377,9 +371,11 @@ void MainWindow::RefreshCategoryCombo() {
 }
 
 void MainWindow::UpdateStatusBar() {
-    int count = 0;
+    int count = (int)m_assets.size();
     double total = 0.0;
-    m_db.GetAssetStats(count, total);
+    for (const auto& asset : m_assets) {
+        total += asset.price;
+    }
 
     wchar_t buf[256];
     swprintf_s(buf, L"共 %d 条记录，总价值: ¥%.2f", count, total);
@@ -620,7 +616,7 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
                     break;
 
                 case IDM_ABOUT:
-                    MessageBoxW(m_hWnd, L"固定资产管理系统 v1.0\n\n基于 Win32 API + SQLite",
+                    MessageBoxW(m_hWnd, L"固定资产管理系统 v2.0\n\n作者：何锐\n基于 Win32 API + SQLite",
                         L"关于", MB_OK | MB_ICONINFORMATION);
                     break;
 
@@ -705,61 +701,44 @@ void MainWindow::SortAssets() {
     }
 
     std::sort(m_assets.begin(), m_assets.end(), [this](const Asset& a, const Asset& b) {
-        bool result = false;
+        // 根据排序方向选择比较的左右操作数
+        const Asset& left = m_sortAscending ? a : b;
+        const Asset& right = m_sortAscending ? b : a;
 
         switch (m_sortColumn) {
             case COL_ID:
-                result = a.id < b.id;
-                break;
+                return left.id < right.id;
 
             case COL_CODE:
-                result = a.assetCode < b.assetCode;
-                break;
+                return left.assetCode < right.assetCode;
 
             case COL_NAME:
-                result = a.name < b.name;
-                break;
+                return left.name < right.name;
 
-            case COL_CATEGORY: {
-                // 获取分类名称
-                std::string catA, catB;
-                for (const auto& cat : m_categories) {
-                    if (cat.id == a.categoryId) catA = cat.name;
-                    if (cat.id == b.categoryId) catB = cat.name;
-                }
-                result = catA < catB;
-                break;
-            }
+            case COL_CATEGORY:
+                return left.categoryName < right.categoryName;
 
             case COL_USER:
-                result = a.userName < b.userName;
-                break;
+                return left.userName < right.userName;
 
             case COL_PURCHASE_DATE:
-                result = a.purchaseDate < b.purchaseDate;
-                break;
+                return left.purchaseDate < right.purchaseDate;
 
             case COL_PRICE:
-                result = a.price < b.price;
-                break;
+                return left.price < right.price;
 
             case COL_LOCATION:
-                result = a.location < b.location;
-                break;
+                return left.location < right.location;
 
             case COL_STATUS:
-                result = a.status < b.status;
-                break;
+                return left.status < right.status;
 
             case COL_REMARK:
-                result = a.remark < b.remark;
-                break;
+                return left.remark < right.remark;
 
             default:
-                result = false;
+                return false;
         }
-
-        return m_sortAscending ? result : !result;
     });
 }
 

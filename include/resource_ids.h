@@ -48,6 +48,5 @@
 #define IDE_BTN_ADD_DEPT       3212
 #define IDE_BTN_DEL_DEPT       3213
 #define IDE_EDIT_SEARCH        3215
-#define IDE_COMBO_FILTER_DEPT  3216
 
 #endif /* RESOURCE_IDS_H */

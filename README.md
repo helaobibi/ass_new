@@ -1,4 +1,4 @@
-# README.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -6,20 +6,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 固定资产管理系统（AssetManager）- 使用 C++17 和 Win32 API 开发的 Windows 桌面应用程序。
 
+## 忽略文件
+
+以下文件为第三方源码，无需阅读或修改：
+
+- `sqlite3.c` - SQLite 数据库引擎源码（约 25 万行）
+- `sqlite3.h` - SQLite 头文件
+
+这些是 SQLite 官方发布的 amalgamation 版本，直接编译使用即可。
+
 ## 构建命令
 
-```bash
-# 创建构建目录并配置（MSVC）
-cmake -B build -G "Visual Studio 17 2022"
+### 方式一：MSVC (Visual Studio)
 
-# 或使用 MinGW
-cmake -B build -G "MinGW Makefiles"
+```bash
+# 配置
+cmake -B build -G "Visual Studio 17 2022"
 
 # 构建
 cmake --build build --config Release
+```
 
-# 输出位置
-# build/bin/AssetManager.exe
+### 方式二：MSYS2/MinGW + Ninja（推荐）
+
+```bash
+# 配置（指定编译器和构建工具）
+cmake -B build -G Ninja \
+  -DCMAKE_C_COMPILER=C:/msys64/mingw64/bin/gcc.exe \
+  -DCMAKE_CXX_COMPILER=C:/msys64/mingw64/bin/g++.exe \
+  -DCMAKE_MAKE_PROGRAM=C:/msys64/mingw64/bin/ninja.exe \
+  -DCMAKE_BUILD_TYPE=Release
+
+# 构建
+cd build && C:/msys64/mingw64/bin/ninja.exe
+```
+
+### 输出位置
+
+```
+build/bin/AssetManager.exe
 ```
 
 ## 架构

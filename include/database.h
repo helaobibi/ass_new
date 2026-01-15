@@ -13,6 +13,7 @@
 
 #include "models.h"
 #include <vector>
+#include <unordered_map>
 #include <sqlite3.h>
 
 /**
@@ -150,6 +151,12 @@ public:
      * @brief 获取员工的资产数量
      */
     int GetEmployeeAssetCount(int employeeId);
+
+    /**
+     * @brief 批量获取所有员工的资产数量
+     * @return 员工ID到资产数量的映射
+     */
+    std::unordered_map<int, int> GetAllEmployeeAssetCounts();
 
     /**
      * @brief 搜索员工

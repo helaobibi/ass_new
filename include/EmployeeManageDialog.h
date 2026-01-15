@@ -35,14 +35,9 @@ private:
     HWND m_hList;
     HWND m_hEditName;
     HWND m_hComboDept;
-    HWND m_hEditPosition;
-    HWND m_hEditPhone;
-    HWND m_hEditEmail;
-    HWND m_hEditRemark;
     HWND m_hDeptList;
     HWND m_hEditDeptName;
     HWND m_hSearchEdit;           // 搜索框
-    HWND m_hFilterDeptCombo;      // 部门筛选下拉框
 
     std::vector<Employee> m_employees;
     std::vector<Department> m_departments;

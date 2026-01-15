@@ -6,7 +6,6 @@
 #include "CategoryManageDialog.h"
 #include <commctrl.h>
 #include <windowsx.h>
-#include <sstream>
 
 CategoryManageDialog::CategoryManageDialog(Database& db)
     : m_db(db)

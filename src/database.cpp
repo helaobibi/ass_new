@@ -6,32 +6,6 @@
 #include "database.h"
 #include <sstream>
 #include <iomanip>
-#include <cmath>
-
-// 获取当前时间作为 FILETIME
-static FILETIME GetCurrentFileTime() {
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    return ft;
-}
-
-// SQLite 回调函数 - 获取单个 int 值
-static int getIntCallback(void* data, int argc, char** argv, char** colNames) {
-    int* result = static_cast<int*>(data);
-    if (argc > 0 && argv[0]) {
-        *result = atoi(argv[0]);
-    }
-    return 0;
-}
-
-// SQLite 回调函数 - 获取单个 double 值
-static int getDoubleCallback(void* data, int argc, char** argv, char** colNames) {
-    double* result = static_cast<double*>(data);
-    if (argc > 0 && argv[0]) {
-        *result = atof(argv[0]);
-    }
-    return 0;
-}
 
 Database::Database() : m_db(nullptr) {
 }
@@ -124,10 +98,6 @@ bool Database::CreateTables() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             department_id INTEGER,
-            position TEXT,
-            phone TEXT,
-            email TEXT,
-            remark TEXT,
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             updated_at INTEGER DEFAULT (strftime('%s', 'now')),
             FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
@@ -177,33 +147,7 @@ bool Database::CreateTables() {
 }
 
 bool Database::InitializeDefaultData() {
-    // 检查是否已有数据
-    int count = 0;
-    char* errMsg = nullptr;
-
-    sqlite3_exec(m_db, "SELECT COUNT(*) FROM categories;", getIntCallback, &count, &errMsg);
-    sqlite3_free(errMsg);
-
-    if (count == 0) {
-        const char* defaultCategories[] = {"电脑设备", "办公家具", "交通工具", "电子设备", "机械设备", "其他"};
-        for (const char* name : defaultCategories) {
-            Category cat{0, name};
-            AddCategory(cat);
-        }
-    }
-
-    count = 0;
-    sqlite3_exec(m_db, "SELECT COUNT(*) FROM departments;", getIntCallback, &count, &errMsg);
-    sqlite3_free(errMsg);
-
-    if (count == 0) {
-        const char* defaultDepartments[] = {"总经办", "技术部", "市场部", "财务部", "人事部", "行政部"};
-        for (const char* name : defaultDepartments) {
-            Department dept{0, name};
-            AddDepartment(dept);
-        }
-    }
-
+    // 不再创建默认分类和部门，由用户自行添加
     return true;
 }
 
@@ -221,7 +165,7 @@ std::vector<Category> Database::GetAllCategories() {
             Category cat;
             cat.id = sqlite3_column_int(stmt, 0);
             cat.name = (const char*)sqlite3_column_text(stmt, 1);
-            result.push_back(cat);
+            result.push_back(std::move(cat));
         }
         sqlite3_finalize(stmt);
     }
@@ -336,7 +280,7 @@ std::vector<Department> Database::GetAllDepartments() {
             Department dept;
             dept.id = sqlite3_column_int(stmt, 0);
             dept.name = (const char*)sqlite3_column_text(stmt, 1);
-            result.push_back(dept);
+            result.push_back(std::move(dept));
         }
         sqlite3_finalize(stmt);
     }
@@ -422,7 +366,7 @@ bool Database::UpdateDepartment(const Department& dept) {
 
 int Database::GetDepartmentEmployeeCount(int deptId) {
     sqlite3_stmt* stmt;
-    const char* sql = "SELECT COUNT(*) FROM employees WHERE departmentId = ?;";
+    const char* sql = "SELECT COUNT(*) FROM employees WHERE department_id = ?;";
     int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 
     int count = 0;
@@ -468,8 +412,7 @@ std::vector<Employee> Database::GetAllEmployees() {
     sqlite3_stmt* stmt;
 
     const char* sql = R"(
-        SELECT e.id, e.name, e.department_id, e.position, e.phone, e.email, e.remark,
-               e.created_at, e.updated_at, d.name as dept_name
+        SELECT e.id, e.name, e.department_id
         FROM employees e
         LEFT JOIN departments d ON e.department_id = d.id
         ORDER BY e.name;
@@ -483,12 +426,7 @@ std::vector<Employee> Database::GetAllEmployees() {
             emp.id = sqlite3_column_int(stmt, 0);
             emp.name = (const char*)sqlite3_column_text(stmt, 1);
             emp.departmentId = sqlite3_column_int(stmt, 2);
-            emp.position = sqlite3_column_text(stmt, 3) ? (const char*)sqlite3_column_text(stmt, 3) : "";
-            emp.phone = sqlite3_column_text(stmt, 4) ? (const char*)sqlite3_column_text(stmt, 4) : "";
-            emp.email = sqlite3_column_text(stmt, 5) ? (const char*)sqlite3_column_text(stmt, 5) : "";
-            emp.remark = sqlite3_column_text(stmt, 6) ? (const char*)sqlite3_column_text(stmt, 6) : "";
-            // 时间戳转换略
-            result.push_back(emp);
+            result.push_back(std::move(emp));
         }
         sqlite3_finalize(stmt);
     }
@@ -499,7 +437,7 @@ std::vector<Employee> Database::GetAllEmployees() {
 bool Database::GetEmployeeById(int id, Employee& emp) {
     sqlite3_stmt* stmt;
     const char* sql = R"(
-        SELECT id, name, department_id, position, phone, email, remark
+        SELECT id, name, department_id
         FROM employees WHERE id = ?;
     )";
     int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
@@ -510,10 +448,6 @@ bool Database::GetEmployeeById(int id, Employee& emp) {
             emp.id = sqlite3_column_int(stmt, 0);
             emp.name = (const char*)sqlite3_column_text(stmt, 1);
             emp.departmentId = sqlite3_column_int(stmt, 2);
-            emp.position = sqlite3_column_text(stmt, 3) ? (const char*)sqlite3_column_text(stmt, 3) : "";
-            emp.phone = sqlite3_column_text(stmt, 4) ? (const char*)sqlite3_column_text(stmt, 4) : "";
-            emp.email = sqlite3_column_text(stmt, 5) ? (const char*)sqlite3_column_text(stmt, 5) : "";
-            emp.remark = sqlite3_column_text(stmt, 6) ? (const char*)sqlite3_column_text(stmt, 6) : "";
             sqlite3_finalize(stmt);
             return true;
         }
@@ -541,7 +475,7 @@ std::vector<Employee> Database::GetEmployeesByName(const std::string& name) {
             emp.id = sqlite3_column_int(stmt, 0);
             emp.name = (const char*)sqlite3_column_text(stmt, 1);
             emp.departmentId = sqlite3_column_int(stmt, 2);
-            result.push_back(emp);
+            result.push_back(std::move(emp));
         }
         sqlite3_finalize(stmt);
     }
@@ -552,18 +486,14 @@ std::vector<Employee> Database::GetEmployeesByName(const std::string& name) {
 bool Database::AddEmployee(Employee& employee) {
     sqlite3_stmt* stmt;
     const char* sql = R"(
-        INSERT INTO employees (name, department_id, position, phone, email, remark)
-        VALUES (?, ?, ?, ?, ?, ?);
+        INSERT INTO employees (name, department_id)
+        VALUES (?, ?);
     )";
     int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, employee.name.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 2, employee.departmentId);
-        sqlite3_bind_text(stmt, 3, employee.position.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 4, employee.phone.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 5, employee.email.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 6, employee.remark.c_str(), -1, SQLITE_TRANSIENT);
 
         rc = sqlite3_step(stmt);
         if (rc == SQLITE_DONE) {
@@ -582,7 +512,7 @@ bool Database::UpdateEmployee(const Employee& employee) {
     sqlite3_stmt* stmt;
     const char* sql = R"(
         UPDATE employees
-        SET name = ?, department_id = ?, position = ?, phone = ?, email = ?, remark = ?,
+        SET name = ?, department_id = ?,
             updated_at = strftime('%s', 'now')
         WHERE id = ?;
     )";
@@ -591,11 +521,7 @@ bool Database::UpdateEmployee(const Employee& employee) {
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, employee.name.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 2, employee.departmentId);
-        sqlite3_bind_text(stmt, 3, employee.position.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 4, employee.phone.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 5, employee.email.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 6, employee.remark.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 7, employee.id);
+        sqlite3_bind_int(stmt, 3, employee.id);
 
         rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
@@ -613,9 +539,9 @@ bool Database::DeleteEmployee(int id) {
         return false;
     }
 
-    // 首先清空该员工名下的所有资产（将 userId 设为 NULL，userName 设为空，状态改为闲置）
+    // 首先清空该员工名下的所有资产（将 user_id 设为 NULL，状态改为闲置）
     sqlite3_stmt* stmt;
-    const char* sqlUpdate = "UPDATE assets SET userId = NULL, userName = '', status = '闲置' WHERE userId = ?;";
+    const char* sqlUpdate = "UPDATE assets SET user_id = NULL, status = '闲置' WHERE user_id = ?;";
     int rc = sqlite3_prepare_v2(m_db, sqlUpdate, -1, &stmt, nullptr);
 
     if (rc == SQLITE_OK) {
@@ -656,7 +582,7 @@ bool Database::DeleteEmployee(int id) {
 
 int Database::GetEmployeeAssetCount(int employeeId) {
     sqlite3_stmt* stmt;
-    const char* sql = "SELECT COUNT(*) FROM assets WHERE userId = ?;";
+    const char* sql = "SELECT COUNT(*) FROM assets WHERE user_id = ?;";
     int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 
     if (rc == SQLITE_OK) {
@@ -671,17 +597,34 @@ int Database::GetEmployeeAssetCount(int employeeId) {
     return 0;
 }
 
+std::unordered_map<int, int> Database::GetAllEmployeeAssetCounts() {
+    std::unordered_map<int, int> result;
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT user_id, COUNT(*) FROM assets WHERE user_id IS NOT NULL GROUP BY user_id;";
+    int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
+
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            int userId = sqlite3_column_int(stmt, 0);
+            int count = sqlite3_column_int(stmt, 1);
+            result[userId] = count;
+        }
+        sqlite3_finalize(stmt);
+    }
+    return result;
+}
+
 std::vector<Employee> Database::SearchEmployees(const std::string& searchText, int departmentId) {
     std::vector<Employee> result;
     sqlite3_stmt* stmt;
 
-    std::string sql = "SELECT id, name, departmentId, position, phone, email, remark FROM employees WHERE 1=1";
+    std::string sql = "SELECT id, name, department_id FROM employees WHERE 1=1";
 
     if (!searchText.empty()) {
-        sql += " AND (name LIKE ? OR position LIKE ? OR phone LIKE ?)";
+        sql += " AND name LIKE ?";
     }
     if (departmentId >= 0) {
-        sql += " AND departmentId = ?";
+        sql += " AND department_id = ?";
     }
     sql += " ORDER BY name;";
 
@@ -695,8 +638,6 @@ std::vector<Employee> Database::SearchEmployees(const std::string& searchText, i
     if (!searchText.empty()) {
         std::string pattern = "%" + searchText + "%";
         sqlite3_bind_text(stmt, paramIdx++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, paramIdx++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, paramIdx++, pattern.c_str(), -1, SQLITE_TRANSIENT);
     }
     if (departmentId >= 0) {
         sqlite3_bind_int(stmt, paramIdx++, departmentId);
@@ -707,11 +648,7 @@ std::vector<Employee> Database::SearchEmployees(const std::string& searchText, i
         emp.id = sqlite3_column_int(stmt, 0);
         emp.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
         emp.departmentId = sqlite3_column_type(stmt, 2) == SQLITE_NULL ? -1 : sqlite3_column_int(stmt, 2);
-        emp.position = sqlite3_column_text(stmt, 3) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) : "";
-        emp.phone = sqlite3_column_text(stmt, 4) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) : "";
-        emp.email = sqlite3_column_text(stmt, 5) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) : "";
-        emp.remark = sqlite3_column_text(stmt, 6) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) : "";
-        result.push_back(emp);
+        result.push_back(std::move(emp));
     }
 
     sqlite3_finalize(stmt);
@@ -758,11 +695,10 @@ std::vector<Asset> Database::SearchAssets(const std::string& searchText,
 
     if (rc == SQLITE_OK) {
         if (!searchText.empty()) {
-            std::string s = searchPattern;
-            sqlite3_bind_text(stmt, paramIdx++, s.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, paramIdx++, s.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, paramIdx++, s.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, paramIdx++, s.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
         }
         if (categoryId >= 0) {
             sqlite3_bind_int(stmt, paramIdx++, categoryId);
@@ -778,15 +714,22 @@ std::vector<Asset> Database::SearchAssets(const std::string& searchText,
             asset.name = (const char*)sqlite3_column_text(stmt, 2);
             asset.categoryId = sqlite3_column_int(stmt, 3);
             asset.userId = sqlite3_column_int(stmt, 4);
-            asset.purchaseDate = sqlite3_column_text(stmt, 5) ? (const char*)sqlite3_column_text(stmt, 5) : "";
+            const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
+            asset.purchaseDate = purchaseDate ? purchaseDate : "";
             asset.price = sqlite3_column_double(stmt, 6);
-            asset.location = sqlite3_column_text(stmt, 7) ? (const char*)sqlite3_column_text(stmt, 7) : "";
-            asset.status = sqlite3_column_text(stmt, 8) ? (const char*)sqlite3_column_text(stmt, 8) : "在用";
-            asset.remark = sqlite3_column_text(stmt, 9) ? (const char*)sqlite3_column_text(stmt, 9) : "";
-            asset.categoryName = sqlite3_column_text(stmt, 10) ? (const char*)sqlite3_column_text(stmt, 10) : "";
-            asset.userName = sqlite3_column_text(stmt, 11) ? (const char*)sqlite3_column_text(stmt, 11) : "";
-            asset.departmentName = sqlite3_column_text(stmt, 12) ? (const char*)sqlite3_column_text(stmt, 12) : "";
-            result.push_back(asset);
+            const char* location = (const char*)sqlite3_column_text(stmt, 7);
+            const char* status = (const char*)sqlite3_column_text(stmt, 8);
+            const char* remark = (const char*)sqlite3_column_text(stmt, 9);
+            const char* catName = (const char*)sqlite3_column_text(stmt, 10);
+            const char* userName = (const char*)sqlite3_column_text(stmt, 11);
+            const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
+            asset.location = location ? location : "";
+            asset.status = status ? status : "在用";
+            asset.remark = remark ? remark : "";
+            asset.categoryName = catName ? catName : "";
+            asset.userName = userName ? userName : "";
+            asset.departmentName = deptName ? deptName : "";
+            result.push_back(std::move(asset));
         }
         sqlite3_finalize(stmt);
     }
@@ -816,14 +759,21 @@ bool Database::GetAssetById(int id, Asset& asset) {
             asset.name = (const char*)sqlite3_column_text(stmt, 2);
             asset.categoryId = sqlite3_column_int(stmt, 3);
             asset.userId = sqlite3_column_int(stmt, 4);
-            asset.purchaseDate = sqlite3_column_text(stmt, 5) ? (const char*)sqlite3_column_text(stmt, 5) : "";
+            const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
+            asset.purchaseDate = purchaseDate ? purchaseDate : "";
             asset.price = sqlite3_column_double(stmt, 6);
-            asset.location = sqlite3_column_text(stmt, 7) ? (const char*)sqlite3_column_text(stmt, 7) : "";
-            asset.status = sqlite3_column_text(stmt, 8) ? (const char*)sqlite3_column_text(stmt, 8) : "在用";
-            asset.remark = sqlite3_column_text(stmt, 9) ? (const char*)sqlite3_column_text(stmt, 9) : "";
-            asset.categoryName = sqlite3_column_text(stmt, 10) ? (const char*)sqlite3_column_text(stmt, 10) : "";
-            asset.userName = sqlite3_column_text(stmt, 11) ? (const char*)sqlite3_column_text(stmt, 11) : "";
-            asset.departmentName = sqlite3_column_text(stmt, 12) ? (const char*)sqlite3_column_text(stmt, 12) : "";
+            const char* location = (const char*)sqlite3_column_text(stmt, 7);
+            const char* status = (const char*)sqlite3_column_text(stmt, 8);
+            const char* remark = (const char*)sqlite3_column_text(stmt, 9);
+            const char* catName = (const char*)sqlite3_column_text(stmt, 10);
+            const char* userName = (const char*)sqlite3_column_text(stmt, 11);
+            const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
+            asset.location = location ? location : "";
+            asset.status = status ? status : "在用";
+            asset.remark = remark ? remark : "";
+            asset.categoryName = catName ? catName : "";
+            asset.userName = userName ? userName : "";
+            asset.departmentName = deptName ? deptName : "";
             sqlite3_finalize(stmt);
             return true;
         }
@@ -835,15 +785,44 @@ bool Database::GetAssetById(int id, Asset& asset) {
 
 bool Database::GetAssetByCode(const std::string& code, Asset& asset) {
     sqlite3_stmt* stmt;
-    const char* sql = "SELECT id FROM assets WHERE asset_code = ?;";
+    // 直接查询完整资产信息，避免二次查询
+    const char* sql = R"(
+        SELECT a.id, a.asset_code, a.name, a.category_id, a.user_id,
+               a.purchase_date, a.price, a.location, a.status, a.remark,
+               c.name as cat_name, e.name as user_name, d.name as dept_name
+        FROM assets a
+        LEFT JOIN categories c ON a.category_id = c.id
+        LEFT JOIN employees e ON a.user_id = e.id
+        LEFT JOIN departments d ON e.department_id = d.id
+        WHERE a.asset_code = ?;
+    )";
     int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, code.c_str(), -1, SQLITE_TRANSIENT);
         if (sqlite3_step(stmt) == SQLITE_ROW) {
-            int id = sqlite3_column_int(stmt, 0);
+            asset.id = sqlite3_column_int(stmt, 0);
+            asset.assetCode = (const char*)sqlite3_column_text(stmt, 1);
+            asset.name = (const char*)sqlite3_column_text(stmt, 2);
+            asset.categoryId = sqlite3_column_int(stmt, 3);
+            asset.userId = sqlite3_column_int(stmt, 4);
+            const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
+            asset.purchaseDate = purchaseDate ? purchaseDate : "";
+            asset.price = sqlite3_column_double(stmt, 6);
+            const char* location = (const char*)sqlite3_column_text(stmt, 7);
+            const char* status = (const char*)sqlite3_column_text(stmt, 8);
+            const char* remark = (const char*)sqlite3_column_text(stmt, 9);
+            const char* catName = (const char*)sqlite3_column_text(stmt, 10);
+            const char* userName = (const char*)sqlite3_column_text(stmt, 11);
+            const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
+            asset.location = location ? location : "";
+            asset.status = status ? status : "在用";
+            asset.remark = remark ? remark : "";
+            asset.categoryName = catName ? catName : "";
+            asset.userName = userName ? userName : "";
+            asset.departmentName = deptName ? deptName : "";
             sqlite3_finalize(stmt);
-            return GetAssetById(id, asset);
+            return true;
         }
         sqlite3_finalize(stmt);
     }
@@ -881,8 +860,16 @@ bool Database::AddAsset(Asset& asset) {
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, asset.assetCode.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, asset.name.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 3, asset.categoryId);
-        sqlite3_bind_int(stmt, 4, asset.userId);
+        if (asset.categoryId >= 0) {
+            sqlite3_bind_int(stmt, 3, asset.categoryId);
+        } else {
+            sqlite3_bind_null(stmt, 3);
+        }
+        if (asset.userId >= 0) {
+            sqlite3_bind_int(stmt, 4, asset.userId);
+        } else {
+            sqlite3_bind_null(stmt, 4);
+        }
         sqlite3_bind_text(stmt, 5, asset.purchaseDate.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_double(stmt, 6, asset.price);
         sqlite3_bind_text(stmt, 7, asset.location.c_str(), -1, SQLITE_TRANSIENT);
@@ -916,8 +903,16 @@ bool Database::UpdateAsset(const Asset& asset) {
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, asset.assetCode.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, asset.name.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 3, asset.categoryId);
-        sqlite3_bind_int(stmt, 4, asset.userId);
+        if (asset.categoryId >= 0) {
+            sqlite3_bind_int(stmt, 3, asset.categoryId);
+        } else {
+            sqlite3_bind_null(stmt, 3);
+        }
+        if (asset.userId >= 0) {
+            sqlite3_bind_int(stmt, 4, asset.userId);
+        } else {
+            sqlite3_bind_null(stmt, 4);
+        }
         sqlite3_bind_text(stmt, 5, asset.purchaseDate.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_double(stmt, 6, asset.price);
         sqlite3_bind_text(stmt, 7, asset.location.c_str(), -1, SQLITE_TRANSIENT);
@@ -956,27 +951,21 @@ bool Database::GetAssetStats(int& count, double& totalPrice) {
     count = 0;
     totalPrice = 0.0;
 
-    std::pair<int*, double*> data(&count, &totalPrice);
-    char* errMsg = nullptr;
+    sqlite3_stmt* stmt;
     const char* sql = "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM assets;";
-    int rc = sqlite3_exec(m_db, sql,
-        [](void* data, int argc, char** argv, char** colNames) -> int {
-            auto* p = (std::pair<int*, double*>*)data;
-            if (argc >= 2) {
-                *p->first = atoi(argv[0]);
-                *p->second = atof(argv[1]);
-            }
-            return 0;
-        },
-        &data, &errMsg);
+    int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 
-    if (rc != SQLITE_OK) {
-        m_lastError = errMsg;
-        sqlite3_free(errMsg);
-        return false;
+    if (rc == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = sqlite3_column_int(stmt, 0);
+            totalPrice = sqlite3_column_double(stmt, 1);
+        }
+        sqlite3_finalize(stmt);
+        return true;
     }
 
-    return true;
+    m_lastError = sqlite3_errmsg(m_db);
+    return false;
 }
 
 bool Database::BeginTransaction() {

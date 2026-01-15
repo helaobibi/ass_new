@@ -4,15 +4,10 @@
  */
 
 #include "AssetEditDialog.h"
-#include "Logger.h"
 #include <commctrl.h>
 #include <windowsx.h>
-#include <sstream>
 #include <regex>
-#include <cmath>
-
-// 对话框模板（动态创建）
-static const wchar_t g_szAssetEditTemplate[] = L"AssetEditDialog";
+#include <unordered_map>
 
 AssetEditDialog::AssetEditDialog(Database& db)
     : m_db(db)
@@ -145,11 +140,9 @@ void AssetEditDialog::InitDialog() {
     HWND hComboCat = GetDlgItem(m_hDlg, IDA_COMBO_CATEGORY);
     ComboBox_ResetContent(hComboCat);
     for (const auto& cat : m_categories) {
-        int len = MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, nullptr, 0);
-        wchar_t* wname = new wchar_t[len];
-        MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, wname, len);
+        wchar_t wname[256];
+        MultiByteToWideChar(65001, 0, cat.name.c_str(), -1, wname, 256);
         ComboBox_AddString(hComboCat, wname);
-        delete[] wname;
     }
 
     // 加载部门列表
@@ -158,11 +151,9 @@ void AssetEditDialog::InitDialog() {
     ComboBox_ResetContent(hComboDept);
     ComboBox_AddString(hComboDept, L"");
     for (const auto& dept : m_departments) {
-        int len = MultiByteToWideChar(65001, 0, dept.name.c_str(), -1, nullptr, 0);
-        wchar_t* wname = new wchar_t[len];
-        MultiByteToWideChar(65001, 0, dept.name.c_str(), -1, wname, len);
+        wchar_t wname[256];
+        MultiByteToWideChar(65001, 0, dept.name.c_str(), -1, wname, 256);
         ComboBox_AddString(hComboDept, wname);
-        delete[] wname;
     }
 
     // 加载状态列表
@@ -434,16 +425,22 @@ int AssetEditDialog::FindEmployeeId(const std::string& name, int deptId) {
         }
     }
 
-    // 仍有歧义
-    std::string msg = "存在多个姓名为 '" + name + "' 的员工：\n";
+    // 建立部门ID到名称的映射，避免嵌套循环 O(n*m) -> O(n+m)
+    std::unordered_map<int, const std::string*> deptMap;
+    for (const auto& dept : m_departments) {
+        deptMap[dept.id] = &dept.name;
+    }
+
+    // 仍有歧义，构建提示消息
+    std::string msg;
+    msg.reserve(256);  // 预分配内存
+    msg = "存在多个姓名为 '" + name + "' 的员工：\n";
     for (const auto& emp : employees) {
         msg += "  - " + emp.name;
-        // 获取部门名称
-        for (const auto& dept : m_departments) {
-            if (dept.id == emp.departmentId) {
-                msg += " (" + dept.name + ")";
-                break;
-            }
+        // 获取部门名称 - O(1) 查找
+        auto it = deptMap.find(emp.departmentId);
+        if (it != deptMap.end()) {
+            msg += " (" + *it->second + ")";
         }
         msg += "\n";
     }
