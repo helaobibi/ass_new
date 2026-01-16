@@ -10,6 +10,7 @@
 #define IDD_ASSET_EDIT           4001
 #define IDD_CATEGORY_MANAGE      4002
 #define IDD_EMPLOYEE_MANAGE      4003
+#define IDD_CHANGELOG_VIEW       4004
 
 /* Asset Edit Dialog Controls */
 #define IDA_EDIT_CODE          3001
@@ -48,5 +49,11 @@
 #define IDE_BTN_ADD_DEPT       3212
 #define IDE_BTN_DEL_DEPT       3213
 #define IDE_EDIT_SEARCH        3215
+
+/* ChangeLog View Dialog Controls */
+#define IDL_LIST_CHANGELOG     3300
+#define IDL_EDIT_SEARCH        3301
+#define IDL_BTN_SEARCH         3302
+#define IDL_BTN_CLEAR          3303
 
 #endif /* RESOURCE_IDS_H */

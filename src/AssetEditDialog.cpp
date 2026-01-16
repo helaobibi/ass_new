@@ -270,11 +270,17 @@ bool AssetEditDialog::SaveAsset() {
     // 获取分类
     HWND hComboCat = GetDlgItem(m_hDlg, IDA_COMBO_CATEGORY);
     int catIdx = ComboBox_GetCurSel(hComboCat);
-    m_asset.categoryId = (catIdx >= 0 && catIdx < (int)m_categories.size())
-        ? m_categories[catIdx].id : -1;
+    if (catIdx >= 0 && catIdx < (int)m_categories.size()) {
+        m_asset.categoryId = m_categories[catIdx].id;
+        m_asset.categoryName = m_categories[catIdx].name;
+    } else {
+        m_asset.categoryId = -1;
+        m_asset.categoryName = "";
+    }
 
     // 获取使用人
     std::string userName = GetUserName();
+    m_asset.userName = userName;  // 保存使用人名称用于变更日志
 
     // 获取部门
     HWND hComboDept = GetDlgItem(m_hDlg, IDA_COMBO_DEPT);

@@ -60,4 +60,18 @@ struct Asset {
     std::string departmentName;
 };
 
+/**
+ * @brief 资产变更日志
+ */
+struct AssetChangeLog {
+    int id;
+    int assetId;            // 关联的资产ID
+    std::string assetCode;  // 资产编号（冗余存储，便于查询）
+    std::string assetName;  // 资产名称（冗余存储）
+    std::string fieldName;  // 变更的字段名
+    std::string oldValue;   // 旧值
+    std::string newValue;   // 新值
+    std::string changeTime; // 变更时间
+};
+
 #endif  // MODELS_H

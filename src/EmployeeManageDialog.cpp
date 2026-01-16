@@ -167,6 +167,7 @@ void EmployeeManageDialog::InitDialog() {
     m_hComboDept = GetDlgItem(m_hDlg, IDE_COMBO_DEPT);
     m_hDeptList = GetDlgItem(m_hDlg, IDC_LIST_DEPARTMENTS);
     m_hEditDeptName = GetDlgItem(m_hDlg, IDE_EDIT_DEPT_NAME);
+    m_hSearchEdit = GetDlgItem(m_hDlg, IDE_EDIT_SEARCH);
 
     // 强制设置部门列表为Report视图模式
     LONG style = GetWindowLong(m_hDeptList, GWL_STYLE);
@@ -219,20 +220,18 @@ void EmployeeManageDialog::InitDialog() {
 }
 
 void EmployeeManageDialog::LoadEmployees() {
-    std::vector<Employee> allEmployees = m_db.GetAllEmployees();
-
-    // 根据选中的部门筛选
-    m_employees.clear();
-    if (m_selectedDeptId >= 0) {
-        m_employees.reserve(allEmployees.size());
-        for (auto& emp : allEmployees) {
-            if (emp.departmentId == m_selectedDeptId) {
-                m_employees.push_back(std::move(emp));
-            }
-        }
-    } else {
-        m_employees = std::move(allEmployees);
+    // 获取搜索文本
+    std::string searchText;
+    if (m_hSearchEdit) {
+        wchar_t wbuf[256] = {0};
+        GetWindowTextW(m_hSearchEdit, wbuf, 256);
+        char mbBuf[512] = {0};
+        WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, mbBuf, 512, nullptr, nullptr);
+        searchText = mbBuf;
     }
+
+    // 使用数据库搜索方法（支持搜索文本和部门筛选）
+    m_employees = m_db.SearchEmployees(searchText, m_selectedDeptId);
 
     RefreshList();
 }

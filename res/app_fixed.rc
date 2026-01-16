@@ -8,6 +8,7 @@
 #define IDD_ASSET_EDIT           4001
 #define IDD_CATEGORY_MANAGE      4002
 #define IDD_EMPLOYEE_MANAGE      4003
+#define IDD_CHANGELOG_VIEW       4004
 
 /* Asset Edit Dialog Controls */
 #define IDA_EDIT_CODE          3001
@@ -40,6 +41,12 @@
 #define IDE_BTN_ADD_DEPT       3212
 #define IDE_BTN_DEL_DEPT       3213
 #define IDE_EDIT_SEARCH        3215
+
+/* ChangeLog View Dialog Controls */
+#define IDL_LIST_CHANGELOG     3300
+#define IDL_EDIT_SEARCH        3301
+#define IDL_BTN_SEARCH         3302
+#define IDL_BTN_CLEAR          3303
 
 /* Version info */
 VS_VERSION_INFO VERSIONINFO
@@ -165,4 +172,20 @@ BEGIN
     PUSHBUTTON      "删除", IDE_BTN_DELETE, 420, 135, 80, 16
 
     PUSHBUTTON      "关闭", IDOK, 230, 265, 60, 16
+END
+
+/* ChangeLog View Dialog */
+IDD_CHANGELOG_VIEW DIALOGEX 0, 0, 500, 350
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "变更日志"
+FONT 9, "MS Shell Dlg"
+BEGIN
+    LTEXT           "搜索:", -1, 10, 12, 30, 12
+    EDITTEXT        IDL_EDIT_SEARCH, 45, 10, 200, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "搜索", IDL_BTN_SEARCH, 255, 10, 50, 14
+    PUSHBUTTON      "清除", IDL_BTN_CLEAR, 310, 10, 50, 14
+
+    CONTROL         "", IDL_LIST_CHANGELOG, "SysListView32", WS_BORDER | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL, 10, 35, 480, 280
+
+    DEFPUSHBUTTON   "关闭", IDOK, 220, 325, 60, 16
 END

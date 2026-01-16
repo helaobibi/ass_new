@@ -217,6 +217,45 @@ public:
      */
     bool GetAssetStats(int& count, double& totalPrice);
 
+    // ========== 变更日志操作 ==========
+
+    /**
+     * @brief 添加变更日志
+     */
+    bool AddChangeLog(const AssetChangeLog& log);
+
+    /**
+     * @brief 批量添加变更日志
+     */
+    bool AddChangeLogs(const std::vector<AssetChangeLog>& logs);
+
+    /**
+     * @brief 获取指定资产的变更日志
+     */
+    std::vector<AssetChangeLog> GetChangeLogsByAssetId(int assetId);
+
+    /**
+     * @brief 获取所有变更日志（支持分页）
+     * @param limit 每页数量，-1表示不限制
+     * @param offset 偏移量
+     */
+    std::vector<AssetChangeLog> GetAllChangeLogs(int limit = -1, int offset = 0);
+
+    /**
+     * @brief 搜索变更日志
+     * @param searchText 搜索关键词（资产编号、名称、字段名）
+     * @param startDate 开始日期（空字符串表示不限）
+     * @param endDate 结束日期（空字符串表示不限）
+     */
+    std::vector<AssetChangeLog> SearchChangeLogs(const std::string& searchText,
+                                                  const std::string& startDate = "",
+                                                  const std::string& endDate = "");
+
+    /**
+     * @brief 获取变更日志总数
+     */
+    int GetChangeLogCount();
+
     // ========== 辅助功能 ==========
 
     /**

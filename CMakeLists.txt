@@ -18,6 +18,7 @@ set(SOURCES
     src/AssetEditDialog.cpp
     src/CategoryManageDialog.cpp
     src/EmployeeManageDialog.cpp
+    src/ChangeLogDialog.cpp
     src/CSVHelper.cpp
     include/sqlite3.c
 )
@@ -30,6 +31,7 @@ set(HEADERS
     include/AssetEditDialog.h
     include/CategoryManageDialog.h
     include/EmployeeManageDialog.h
+    include/ChangeLogDialog.h
     include/CSVHelper.h
 )
 

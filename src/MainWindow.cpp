@@ -7,6 +7,7 @@
 #include "AssetEditDialog.h"
 #include "CategoryManageDialog.h"
 #include "EmployeeManageDialog.h"
+#include "ChangeLogDialog.h"
 #include "CSVHelper.h"
 #include <commdlg.h>
 #include <windowsx.h>
@@ -125,6 +126,8 @@ void MainWindow::CreateMenus() {
     HMENU hManageMenu = CreatePopupMenu();
     AppendMenuW(hManageMenu, MF_STRING, IDM_CATEGORY_MANAGE, L"分类管理...");
     AppendMenuW(hManageMenu, MF_STRING, IDM_EMPLOYEE_MANAGE, L"人员管理...");
+    AppendMenuW(hManageMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(hManageMenu, MF_STRING, IDM_CHANGELOG, L"变更日志...");
     AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hManageMenu, L"管理(&M)");
 
     // 视图菜单
@@ -504,6 +507,11 @@ void MainWindow::OnClearFilters() {
     LoadData();
 }
 
+void MainWindow::OnViewChangeLog() {
+    ChangeLogDialog dialog(m_db);
+    dialog.Show(m_hWnd);
+}
+
 int MainWindow::MessageLoop() {
     MSG msg = {};
     while (GetMessage(&msg, nullptr, 0, 0)) {
@@ -648,6 +656,10 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 
                 case IDM_CLEAR_FILTERS:
                     OnClearFilters();
+                    break;
+
+                case IDM_CHANGELOG:
+                    OnViewChangeLog();
                     break;
 
                 default:

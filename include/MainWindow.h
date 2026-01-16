@@ -25,6 +25,7 @@
 class AssetEditDialog;
 class CategoryManageDialog;
 class EmployeeManageDialog;
+class ChangeLogDialog;
 
 // 控件ID定义
 #define ID_LISTVIEW_ASSETS     1001
@@ -45,6 +46,7 @@ class EmployeeManageDialog;
 #define IDM_DOWNLOAD_TEMPLATE  2302
 #define IDM_REFRESH            2400
 #define IDM_CLEAR_FILTERS      2401
+#define IDM_CHANGELOG          2402
 #define IDM_ABOUT              2500
 
 // 列表视图列索引
@@ -201,6 +203,11 @@ private:
      * @brief 清除筛选条件
      */
     void OnClearFilters();
+
+    /**
+     * @brief 查看变更日志
+     */
+    void OnViewChangeLog();
 
     /**
      * @brief 处理列排序

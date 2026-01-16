@@ -143,6 +143,32 @@ bool Database::CreateTables() {
     sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_assets_user ON assets(user_id);", nullptr, nullptr, &errMsg);
     sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);", nullptr, nullptr, &errMsg);
 
+    // 创建变更日志表
+    const char* createChangeLogTable = R"(
+        CREATE TABLE IF NOT EXISTS asset_change_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id INTEGER NOT NULL,
+            asset_code TEXT NOT NULL,
+            asset_name TEXT NOT NULL,
+            field_name TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            change_time TEXT DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+        );
+    )";
+
+    rc = sqlite3_exec(m_db, createChangeLogTable, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK) {
+        m_lastError = errMsg;
+        sqlite3_free(errMsg);
+        return false;
+    }
+
+    // 创建变更日志索引
+    sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_changelog_asset ON asset_change_logs(asset_id);", nullptr, nullptr, &errMsg);
+    sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_changelog_time ON asset_change_logs(change_time);", nullptr, nullptr, &errMsg);
+
     return true;
 }
 
@@ -155,6 +181,7 @@ bool Database::InitializeDefaultData() {
 
 std::vector<Category> Database::GetAllCategories() {
     std::vector<Category> result;
+    result.reserve(32);  // 预分配，减少内存重分配
     sqlite3_stmt* stmt;
 
     const char* sql = "SELECT id, name FROM categories ORDER BY name;";
@@ -270,6 +297,7 @@ bool Database::DeleteCategory(int id) {
 
 std::vector<Department> Database::GetAllDepartments() {
     std::vector<Department> result;
+    result.reserve(32);  // 预分配，减少内存重分配
     sqlite3_stmt* stmt;
 
     const char* sql = "SELECT id, name FROM departments ORDER BY name;";
@@ -409,6 +437,7 @@ bool Database::DeleteDepartment(int id) {
 
 std::vector<Employee> Database::GetAllEmployees() {
     std::vector<Employee> result;
+    result.reserve(64);  // 预分配，减少内存重分配
     sqlite3_stmt* stmt;
 
     const char* sql = R"(
@@ -459,6 +488,7 @@ bool Database::GetEmployeeById(int id, Employee& emp) {
 
 std::vector<Employee> Database::GetEmployeesByName(const std::string& name) {
     std::vector<Employee> result;
+    result.reserve(8);  // 同名员工通常较少
     sqlite3_stmt* stmt;
     const char* sql = R"(
         SELECT e.id, e.name, e.department_id, d.name as dept_name
@@ -616,6 +646,7 @@ std::unordered_map<int, int> Database::GetAllEmployeeAssetCounts() {
 
 std::vector<Employee> Database::SearchEmployees(const std::string& searchText, int departmentId) {
     std::vector<Employee> result;
+    result.reserve(64);  // 预分配，减少内存重分配
     sqlite3_stmt* stmt;
 
     std::string sql = "SELECT id, name, department_id FROM employees WHERE 1=1";
@@ -664,10 +695,10 @@ std::vector<Asset> Database::GetAllAssets() {
 std::vector<Asset> Database::SearchAssets(const std::string& searchText,
                                            int categoryId, const std::string& status) {
     std::vector<Asset> result;
+    result.reserve(128);  // 预分配，减少内存重分配
     sqlite3_stmt* stmt;
 
-    std::ostringstream sql;
-    sql << R"(
+    std::string sql = R"(
         SELECT a.id, a.asset_code, a.name, a.category_id, a.user_id,
                a.purchase_date, a.price, a.location, a.status, a.remark,
                c.name as cat_name, e.name as user_name, d.name as dept_name
@@ -679,19 +710,19 @@ std::vector<Asset> Database::SearchAssets(const std::string& searchText,
     )";
 
     if (!searchText.empty()) {
-        sql << " AND (a.asset_code LIKE ? OR a.name LIKE ? OR e.name LIKE ? OR a.remark LIKE ?)";
+        sql += " AND (a.asset_code LIKE ? OR a.name LIKE ? OR e.name LIKE ? OR a.remark LIKE ?)";
     }
     if (categoryId >= 0) {
-        sql << " AND a.category_id = ?";
+        sql += " AND a.category_id = ?";
     }
     if (!status.empty()) {
-        sql << " AND a.status = ?";
+        sql += " AND a.status = ?";
     }
-    sql << " ORDER BY a.id DESC;";
+    sql += " ORDER BY a.id DESC;";
 
     std::string searchPattern = "%" + searchText + "%";
     int paramIdx = 1;
-    int rc = sqlite3_prepare_v2(m_db, sql.str().c_str(), -1, &stmt, nullptr);
+    int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
 
     if (rc == SQLITE_OK) {
         if (!searchText.empty()) {
@@ -890,6 +921,47 @@ bool Database::AddAsset(Asset& asset) {
 }
 
 bool Database::UpdateAsset(const Asset& asset) {
+    // 先获取旧的资产数据用于比较
+    Asset oldAsset;
+    if (!GetAssetById(asset.id, oldAsset)) {
+        m_lastError = "找不到要更新的资产";
+        return false;
+    }
+
+    // 比较字段变更并记录日志
+    std::vector<AssetChangeLog> changeLogs;
+
+    auto addLog = [&](const std::string& fieldName, const std::string& oldVal, const std::string& newVal) {
+        if (oldVal != newVal) {
+            AssetChangeLog log;
+            log.assetId = asset.id;
+            log.assetCode = asset.assetCode;
+            log.assetName = asset.name;
+            log.fieldName = fieldName;
+            log.oldValue = oldVal;
+            log.newValue = newVal;
+            changeLogs.push_back(std::move(log));
+        }
+    };
+
+    // 比较各字段
+    addLog("资产编号", oldAsset.assetCode, asset.assetCode);
+    addLog("资产名称", oldAsset.name, asset.name);
+    addLog("分类", oldAsset.categoryName, asset.categoryName);
+    addLog("使用人", oldAsset.userName, asset.userName);
+    addLog("购入日期", oldAsset.purchaseDate, asset.purchaseDate);
+
+    // 价格需要特殊处理
+    std::ostringstream oldPriceStr, newPriceStr;
+    oldPriceStr << std::fixed << std::setprecision(2) << oldAsset.price;
+    newPriceStr << std::fixed << std::setprecision(2) << asset.price;
+    addLog("价格", oldPriceStr.str(), newPriceStr.str());
+
+    addLog("存放位置", oldAsset.location, asset.location);
+    addLog("状态", oldAsset.status, asset.status);
+    addLog("备注", oldAsset.remark, asset.remark);
+
+    // 执行更新
     sqlite3_stmt* stmt;
     const char* sql = R"(
         UPDATE assets
@@ -923,7 +995,13 @@ bool Database::UpdateAsset(const Asset& asset) {
         rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
 
-        return (rc == SQLITE_DONE);
+        if (rc == SQLITE_DONE) {
+            // 更新成功后记录变更日志
+            if (!changeLogs.empty()) {
+                AddChangeLogs(changeLogs);
+            }
+            return true;
+        }
     }
 
     m_lastError = sqlite3_errmsg(m_db);
@@ -999,4 +1077,204 @@ bool Database::Rollback() {
         return false;
     }
     return true;
+}
+
+// ========== 变更日志操作实现 ==========
+
+bool Database::AddChangeLog(const AssetChangeLog& log) {
+    sqlite3_stmt* stmt;
+    const char* sql = R"(
+        INSERT INTO asset_change_logs (asset_id, asset_code, asset_name, field_name, old_value, new_value)
+        VALUES (?, ?, ?, ?, ?, ?);
+    )";
+    int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
+
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, log.assetId);
+        sqlite3_bind_text(stmt, 2, log.assetCode.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, log.assetName.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, log.fieldName.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 5, log.oldValue.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 6, log.newValue.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+
+        return (rc == SQLITE_DONE);
+    }
+
+    m_lastError = sqlite3_errmsg(m_db);
+    return false;
+}
+
+bool Database::AddChangeLogs(const std::vector<AssetChangeLog>& logs) {
+    if (logs.empty()) return true;
+
+    for (const auto& log : logs) {
+        if (!AddChangeLog(log)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<AssetChangeLog> Database::GetChangeLogsByAssetId(int assetId) {
+    std::vector<AssetChangeLog> result;
+    result.reserve(32);  // 预分配，减少内存重分配
+    sqlite3_stmt* stmt;
+
+    const char* sql = R"(
+        SELECT id, asset_id, asset_code, asset_name, field_name, old_value, new_value, change_time
+        FROM asset_change_logs
+        WHERE asset_id = ?
+        ORDER BY change_time DESC, id DESC;
+    )";
+
+    int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, assetId);
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            AssetChangeLog log;
+            log.id = sqlite3_column_int(stmt, 0);
+            log.assetId = sqlite3_column_int(stmt, 1);
+            log.assetCode = (const char*)sqlite3_column_text(stmt, 2);
+            log.assetName = (const char*)sqlite3_column_text(stmt, 3);
+            log.fieldName = (const char*)sqlite3_column_text(stmt, 4);
+            const char* oldVal = (const char*)sqlite3_column_text(stmt, 5);
+            const char* newVal = (const char*)sqlite3_column_text(stmt, 6);
+            const char* changeTime = (const char*)sqlite3_column_text(stmt, 7);
+            log.oldValue = oldVal ? oldVal : "";
+            log.newValue = newVal ? newVal : "";
+            log.changeTime = changeTime ? changeTime : "";
+            result.push_back(std::move(log));
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    return result;
+}
+
+std::vector<AssetChangeLog> Database::GetAllChangeLogs(int limit, int offset) {
+    std::vector<AssetChangeLog> result;
+    result.reserve(limit > 0 ? limit : 128);  // 预分配，减少内存重分配
+    sqlite3_stmt* stmt;
+
+    std::string sql = R"(
+        SELECT id, asset_id, asset_code, asset_name, field_name, old_value, new_value, change_time
+        FROM asset_change_logs
+        ORDER BY change_time DESC, id DESC
+    )";
+
+    if (limit > 0) {
+        sql += " LIMIT " + std::to_string(limit);
+        if (offset > 0) {
+            sql += " OFFSET " + std::to_string(offset);
+        }
+    }
+    sql += ";";
+
+    int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            AssetChangeLog log;
+            log.id = sqlite3_column_int(stmt, 0);
+            log.assetId = sqlite3_column_int(stmt, 1);
+            log.assetCode = (const char*)sqlite3_column_text(stmt, 2);
+            log.assetName = (const char*)sqlite3_column_text(stmt, 3);
+            log.fieldName = (const char*)sqlite3_column_text(stmt, 4);
+            const char* oldVal = (const char*)sqlite3_column_text(stmt, 5);
+            const char* newVal = (const char*)sqlite3_column_text(stmt, 6);
+            const char* changeTime = (const char*)sqlite3_column_text(stmt, 7);
+            log.oldValue = oldVal ? oldVal : "";
+            log.newValue = newVal ? newVal : "";
+            log.changeTime = changeTime ? changeTime : "";
+            result.push_back(std::move(log));
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    return result;
+}
+
+std::vector<AssetChangeLog> Database::SearchChangeLogs(const std::string& searchText,
+                                                        const std::string& startDate,
+                                                        const std::string& endDate) {
+    std::vector<AssetChangeLog> result;
+    result.reserve(128);  // 预分配，减少内存重分配
+    sqlite3_stmt* stmt;
+
+    std::string sql = R"(
+        SELECT id, asset_id, asset_code, asset_name, field_name, old_value, new_value, change_time
+        FROM asset_change_logs
+        WHERE 1=1
+    )";
+
+    if (!searchText.empty()) {
+        sql += " AND (asset_code LIKE ? OR asset_name LIKE ? OR field_name LIKE ?)";
+    }
+    if (!startDate.empty()) {
+        sql += " AND change_time >= ?";
+    }
+    if (!endDate.empty()) {
+        sql += " AND change_time <= ?";
+    }
+    sql += " ORDER BY change_time DESC, id DESC;";
+
+    int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        m_lastError = sqlite3_errmsg(m_db);
+        return result;
+    }
+
+    int paramIdx = 1;
+    std::string searchPattern = "%" + searchText + "%";
+
+    if (!searchText.empty()) {
+        sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, paramIdx++, searchPattern.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    if (!startDate.empty()) {
+        sqlite3_bind_text(stmt, paramIdx++, startDate.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    if (!endDate.empty()) {
+        std::string endDateTime = endDate + " 23:59:59";
+        sqlite3_bind_text(stmt, paramIdx++, endDateTime.c_str(), -1, SQLITE_TRANSIENT);
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        AssetChangeLog log;
+        log.id = sqlite3_column_int(stmt, 0);
+        log.assetId = sqlite3_column_int(stmt, 1);
+        log.assetCode = (const char*)sqlite3_column_text(stmt, 2);
+        log.assetName = (const char*)sqlite3_column_text(stmt, 3);
+        log.fieldName = (const char*)sqlite3_column_text(stmt, 4);
+        const char* oldVal = (const char*)sqlite3_column_text(stmt, 5);
+        const char* newVal = (const char*)sqlite3_column_text(stmt, 6);
+        const char* changeTime = (const char*)sqlite3_column_text(stmt, 7);
+        log.oldValue = oldVal ? oldVal : "";
+        log.newValue = newVal ? newVal : "";
+        log.changeTime = changeTime ? changeTime : "";
+        result.push_back(std::move(log));
+    }
+
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int Database::GetChangeLogCount() {
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT COUNT(*) FROM asset_change_logs;";
+    int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
+
+    int count = 0;
+    if (rc == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    return count;
 }
