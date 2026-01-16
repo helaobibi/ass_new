@@ -71,6 +71,13 @@ else()
     )
     # 设置字符集为 Unicode (MinGW)
     target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
+
+    # MinGW 静态链接 - 生成独立可执行文件，无需依赖 DLL
+    target_link_options(${PROJECT_NAME} PRIVATE
+        -static
+        -static-libgcc
+        -static-libstdc++
+    )
 endif()
 
 # 设置子系统为 Windows
