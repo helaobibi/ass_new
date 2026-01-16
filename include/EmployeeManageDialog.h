@@ -44,6 +44,11 @@ private:
     int m_selectedId;
     int m_selectedDeptId;
 
+    // 排序状态
+    int m_sortColumn;      // 当前排序列 (-1 表示无排序)
+    int m_sortState;       // 排序状态: 0=默认, 1=升序, 2=降序
+    std::unordered_map<int, int> m_assetCounts;  // 缓存员工资产数量
+
     /**
      * @brief 对话框过程
      */
@@ -108,6 +113,21 @@ private:
      * @brief 清空编辑区
      */
     void ClearEditFields();
+
+    /**
+     * @brief 处理列点击排序
+     */
+    void OnColumnClick(int column);
+
+    /**
+     * @brief 排序员工列表
+     */
+    void SortEmployees();
+
+    /**
+     * @brief 更新列头显示
+     */
+    void UpdateColumnHeader(int column, int sortState);
 };
 
 #endif  // EMPLOYEEMANAGEDIALOG_H

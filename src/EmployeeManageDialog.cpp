@@ -7,6 +7,7 @@
 #include <commctrl.h>
 #include <windowsx.h>
 #include <unordered_map>
+#include <algorithm>
 
 EmployeeManageDialog::EmployeeManageDialog(Database& db)
     : m_db(db)
@@ -19,6 +20,8 @@ EmployeeManageDialog::EmployeeManageDialog(Database& db)
     , m_hSearchEdit(nullptr)
     , m_selectedId(-1)
     , m_selectedDeptId(-1)
+    , m_sortColumn(-1)
+    , m_sortState(0)
 {
 }
 
@@ -125,20 +128,24 @@ INT_PTR EmployeeManageDialog::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lPa
                     }
                 } else if (pnmhdr->code == NM_DBLCLK) {
                     OnEdit();
+                } else if (pnmhdr->code == LVN_COLUMNCLICK) {
+                    LPNMLISTVIEW pnmlv = (LPNMLISTVIEW)lParam;
+                    OnColumnClick(pnmlv->iSubItem);
                 }
             } else if (pnmhdr->idFrom == IDC_LIST_DEPARTMENTS) {
                 if (pnmhdr->code == LVN_ITEMCHANGED) {
                     LPNMLISTVIEW pnmlv = (LPNMLISTVIEW)lParam;
                     if (pnmlv->uNewState & LVIS_SELECTED) {
                         int idx = pnmlv->iItem;
-                        if (idx >= 0 && idx < (int)m_departments.size()) {
-                            m_selectedDeptId = m_departments[idx].id;
-                            LoadEmployees();  // 选中部门时刷新员工列表
+                        if (idx == 0) {
+                            // 选中"全部"选项
+                            m_selectedDeptId = -1;
+                            LoadEmployees();
+                        } else if (idx > 0 && idx <= (int)m_departments.size()) {
+                            // 选中具体部门（索引需要减1，因为0是"全部"）
+                            m_selectedDeptId = m_departments[idx - 1].id;
+                            LoadEmployees();
                         }
-                    } else if (!(pnmlv->uNewState & LVIS_SELECTED) && (pnmlv->uOldState & LVIS_SELECTED)) {
-                        // 取消选中时显示全部员工
-                        m_selectedDeptId = -1;
-                        LoadEmployees();
                     }
                 }
             }
@@ -240,7 +247,7 @@ void EmployeeManageDialog::RefreshList() {
     }
 
     // 批量获取所有员工的资产数量，避免 N+1 查询
-    std::unordered_map<int, int> assetCounts = m_db.GetAllEmployeeAssetCounts();
+    m_assetCounts = m_db.GetAllEmployeeAssetCounts();
 
     wchar_t buf[256];
     for (size_t i = 0; i < m_employees.size(); i++) {
@@ -264,8 +271,8 @@ void EmployeeManageDialog::RefreshList() {
         ListView_SetItemText(m_hList, i, 1, buf);
 
         // 设备数量 - O(1) 查找
-        auto countIt = assetCounts.find(m_employees[i].id);
-        int assetCount = (countIt != assetCounts.end()) ? countIt->second : 0;
+        auto countIt = m_assetCounts.find(m_employees[i].id);
+        int assetCount = (countIt != m_assetCounts.end()) ? countIt->second : 0;
         _itow_s(assetCount, buf, 10);
         ListView_SetItemText(m_hList, i, 2, buf);
     }
@@ -387,10 +394,18 @@ void EmployeeManageDialog::RefreshDepartmentList() {
 
     ListView_DeleteAllItems(m_hDeptList);
 
+    // 添加"全部"选项
+    LVITEMW lviAll = {};
+    lviAll.mask = LVIF_TEXT;
+    lviAll.iItem = 0;
+    lviAll.iSubItem = 0;
+    lviAll.pszText = (wchar_t*)L"全部";
+    ListView_InsertItem(m_hDeptList, &lviAll);
+
     for (size_t i = 0; i < m_departments.size(); i++) {
         LVITEMW lvi = {};
         lvi.mask = LVIF_TEXT;
-        lvi.iItem = (int)i;
+        lvi.iItem = (int)(i + 1);  // 从索引1开始，因为0是"全部"
         lvi.iSubItem = 0;
         lvi.pszText = (wchar_t*)L"";
 
@@ -402,6 +417,9 @@ void EmployeeManageDialog::RefreshDepartmentList() {
             ListView_SetItemText(m_hDeptList, idx, 0, buf);
         }
     }
+
+    // 默认选中"全部"
+    ListView_SetItemState(m_hDeptList, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 }
 
 // 添加部门
@@ -448,4 +466,80 @@ void EmployeeManageDialog::OnDeleteDepartment() {
             MessageBoxW(m_hDlg, L"删除失败", L"错误", MB_OK | MB_ICONERROR);
         }
     }
+}
+
+// 处理列点击排序
+void EmployeeManageDialog::OnColumnClick(int column) {
+    // 只对"设备数量"列（索引2）启用排序
+    if (column != 2) {
+        return;
+    }
+
+    // 如果点击的是不同的列，重置之前列的状态
+    if (m_sortColumn != column && m_sortColumn >= 0) {
+        UpdateColumnHeader(m_sortColumn, 0);
+    }
+
+    // 切换状态: 0(默认) -> 1(升序) -> 2(降序) -> 0(默认)
+    if (m_sortColumn == column) {
+        m_sortState = (m_sortState + 1) % 3;
+    } else {
+        m_sortColumn = column;
+        m_sortState = 1;  // 新列从升序开始
+    }
+
+    // 更新列头显示
+    UpdateColumnHeader(column, m_sortState);
+
+    // 执行排序
+    if (m_sortState == 0) {
+        m_sortColumn = -1;
+        LoadEmployees();  // 重新加载以恢复默认排序
+    } else {
+        SortEmployees();
+        RefreshList();
+    }
+}
+
+// 排序员工列表
+void EmployeeManageDialog::SortEmployees() {
+    if (m_sortColumn != 2 || m_employees.empty()) {
+        return;
+    }
+
+    bool ascending = (m_sortState == 1);
+
+    std::sort(m_employees.begin(), m_employees.end(), [this, ascending](const Employee& a, const Employee& b) {
+        auto itA = m_assetCounts.find(a.id);
+        auto itB = m_assetCounts.find(b.id);
+        int countA = (itA != m_assetCounts.end()) ? itA->second : 0;
+        int countB = (itB != m_assetCounts.end()) ? itB->second : 0;
+
+        return ascending ? (countA < countB) : (countA > countB);
+    });
+}
+
+// 更新列头显示
+void EmployeeManageDialog::UpdateColumnHeader(int column, int sortState) {
+    const wchar_t* colNames[] = {L"姓名", L"部门", L"设备数量"};
+
+    if (column < 0 || column >= 3) return;
+
+    wchar_t headerText[64];
+    switch (sortState) {
+        case 1:  // 升序
+            swprintf_s(headerText, L"%s ▲", colNames[column]);
+            break;
+        case 2:  // 降序
+            swprintf_s(headerText, L"%s ▼", colNames[column]);
+            break;
+        default:  // 默认
+            wcscpy_s(headerText, colNames[column]);
+            break;
+    }
+
+    LVCOLUMNW lvc = {};
+    lvc.mask = LVCF_TEXT;
+    lvc.pszText = headerText;
+    ListView_SetColumn(m_hList, column, &lvc);
 }

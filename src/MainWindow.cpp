@@ -287,6 +287,9 @@ void MainWindow::LoadData() {
 }
 
 void MainWindow::RefreshListView() {
+    // 禁用重绘，提升大量数据时的刷新性能
+    SendMessage(m_hListView, WM_SETREDRAW, FALSE, 0);
+
     ListView_DeleteAllItems(m_hListView);
 
     wchar_t buf[256];
@@ -339,6 +342,10 @@ void MainWindow::RefreshListView() {
         MultiByteToWideChar(65001, 0, asset.remark.c_str(), -1, buf, 256);
         ListView_SetItemText(m_hListView, i, COL_REMARK, buf);
     }
+
+    // 恢复重绘并刷新
+    SendMessage(m_hListView, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(m_hListView, NULL, TRUE);
 }
 
 void MainWindow::RefreshCategoryCombo() {
@@ -462,6 +469,7 @@ void MainWindow::OnManageEmployees() {
 
 void MainWindow::OnImportCSV() {
     if (CSVHelper::ImportFromCSV(m_hWnd, m_db)) {
+        RefreshCategoryCombo();
         LoadData();
     }
 }
