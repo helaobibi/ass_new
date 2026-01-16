@@ -638,7 +638,9 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 
                 case ID_EDIT_SEARCH:
                     if (HIWORD(wParam) == EN_CHANGE) {
-                        LoadData();
+                        // 使用防抖机制，延迟 300ms 后执行搜索
+                        KillTimer(m_hWnd, ID_TIMER_SEARCH);
+                        SetTimer(m_hWnd, ID_TIMER_SEARCH, 300, nullptr);
                     }
                     break;
 
@@ -667,6 +669,13 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
             }
             return 0;
         }
+
+        case WM_TIMER:
+            if (wParam == ID_TIMER_SEARCH) {
+                KillTimer(m_hWnd, ID_TIMER_SEARCH);
+                LoadData();
+            }
+            return 0;
 
         case WM_CLOSE:
             DestroyWindow(m_hWnd);

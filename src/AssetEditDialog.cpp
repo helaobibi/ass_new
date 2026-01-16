@@ -369,7 +369,7 @@ std::string AssetEditDialog::GetNextAssetCode() {
     if (m_db.GetLastAsset(lastAsset)) {
         // 解析最后一个编号
         std::string code = lastAsset.assetCode;
-        std::regex re(R"((\D*)(\d+))");
+        static const std::regex re(R"((\D*)(\d+))");
         std::smatch match;
         if (std::regex_match(code, match, re)) {
             std::string prefix = match[1].str();

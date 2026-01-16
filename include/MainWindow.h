@@ -33,6 +33,7 @@ class ChangeLogDialog;
 #define ID_COMBO_CATEGORY      1003
 #define ID_COMBO_STATUS        1004
 #define ID_STATUSBAR           1005
+#define ID_TIMER_SEARCH        1006
 
 // 菜单ID定义
 #define IDM_FILE_EXIT          2000

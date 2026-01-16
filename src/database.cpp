@@ -7,6 +7,30 @@
 #include <sstream>
 #include <iomanip>
 
+// 辅助函数：从 sqlite3_stmt 构建 Asset 对象
+static void BuildAssetFromStmt(sqlite3_stmt* stmt, Asset& asset) {
+    asset.id = sqlite3_column_int(stmt, 0);
+    asset.assetCode = (const char*)sqlite3_column_text(stmt, 1);
+    asset.name = (const char*)sqlite3_column_text(stmt, 2);
+    asset.categoryId = sqlite3_column_int(stmt, 3);
+    asset.userId = sqlite3_column_int(stmt, 4);
+    const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
+    asset.purchaseDate = purchaseDate ? purchaseDate : "";
+    asset.price = sqlite3_column_double(stmt, 6);
+    const char* location = (const char*)sqlite3_column_text(stmt, 7);
+    const char* status = (const char*)sqlite3_column_text(stmt, 8);
+    const char* remark = (const char*)sqlite3_column_text(stmt, 9);
+    const char* catName = (const char*)sqlite3_column_text(stmt, 10);
+    const char* userName = (const char*)sqlite3_column_text(stmt, 11);
+    const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
+    asset.location = location ? location : "";
+    asset.status = status ? status : "在用";
+    asset.remark = remark ? remark : "";
+    asset.categoryName = catName ? catName : "";
+    asset.userName = userName ? userName : "";
+    asset.departmentName = deptName ? deptName : "";
+}
+
 Database::Database() : m_db(nullptr) {
 }
 
@@ -740,26 +764,7 @@ std::vector<Asset> Database::SearchAssets(const std::string& searchText,
 
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             Asset asset;
-            asset.id = sqlite3_column_int(stmt, 0);
-            asset.assetCode = (const char*)sqlite3_column_text(stmt, 1);
-            asset.name = (const char*)sqlite3_column_text(stmt, 2);
-            asset.categoryId = sqlite3_column_int(stmt, 3);
-            asset.userId = sqlite3_column_int(stmt, 4);
-            const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
-            asset.purchaseDate = purchaseDate ? purchaseDate : "";
-            asset.price = sqlite3_column_double(stmt, 6);
-            const char* location = (const char*)sqlite3_column_text(stmt, 7);
-            const char* status = (const char*)sqlite3_column_text(stmt, 8);
-            const char* remark = (const char*)sqlite3_column_text(stmt, 9);
-            const char* catName = (const char*)sqlite3_column_text(stmt, 10);
-            const char* userName = (const char*)sqlite3_column_text(stmt, 11);
-            const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
-            asset.location = location ? location : "";
-            asset.status = status ? status : "在用";
-            asset.remark = remark ? remark : "";
-            asset.categoryName = catName ? catName : "";
-            asset.userName = userName ? userName : "";
-            asset.departmentName = deptName ? deptName : "";
+            BuildAssetFromStmt(stmt, asset);
             result.push_back(std::move(asset));
         }
         sqlite3_finalize(stmt);
@@ -785,26 +790,7 @@ bool Database::GetAssetById(int id, Asset& asset) {
     if (rc == SQLITE_OK) {
         sqlite3_bind_int(stmt, 1, id);
         if (sqlite3_step(stmt) == SQLITE_ROW) {
-            asset.id = sqlite3_column_int(stmt, 0);
-            asset.assetCode = (const char*)sqlite3_column_text(stmt, 1);
-            asset.name = (const char*)sqlite3_column_text(stmt, 2);
-            asset.categoryId = sqlite3_column_int(stmt, 3);
-            asset.userId = sqlite3_column_int(stmt, 4);
-            const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
-            asset.purchaseDate = purchaseDate ? purchaseDate : "";
-            asset.price = sqlite3_column_double(stmt, 6);
-            const char* location = (const char*)sqlite3_column_text(stmt, 7);
-            const char* status = (const char*)sqlite3_column_text(stmt, 8);
-            const char* remark = (const char*)sqlite3_column_text(stmt, 9);
-            const char* catName = (const char*)sqlite3_column_text(stmt, 10);
-            const char* userName = (const char*)sqlite3_column_text(stmt, 11);
-            const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
-            asset.location = location ? location : "";
-            asset.status = status ? status : "在用";
-            asset.remark = remark ? remark : "";
-            asset.categoryName = catName ? catName : "";
-            asset.userName = userName ? userName : "";
-            asset.departmentName = deptName ? deptName : "";
+            BuildAssetFromStmt(stmt, asset);
             sqlite3_finalize(stmt);
             return true;
         }
@@ -832,26 +818,7 @@ bool Database::GetAssetByCode(const std::string& code, Asset& asset) {
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, code.c_str(), -1, SQLITE_TRANSIENT);
         if (sqlite3_step(stmt) == SQLITE_ROW) {
-            asset.id = sqlite3_column_int(stmt, 0);
-            asset.assetCode = (const char*)sqlite3_column_text(stmt, 1);
-            asset.name = (const char*)sqlite3_column_text(stmt, 2);
-            asset.categoryId = sqlite3_column_int(stmt, 3);
-            asset.userId = sqlite3_column_int(stmt, 4);
-            const char* purchaseDate = (const char*)sqlite3_column_text(stmt, 5);
-            asset.purchaseDate = purchaseDate ? purchaseDate : "";
-            asset.price = sqlite3_column_double(stmt, 6);
-            const char* location = (const char*)sqlite3_column_text(stmt, 7);
-            const char* status = (const char*)sqlite3_column_text(stmt, 8);
-            const char* remark = (const char*)sqlite3_column_text(stmt, 9);
-            const char* catName = (const char*)sqlite3_column_text(stmt, 10);
-            const char* userName = (const char*)sqlite3_column_text(stmt, 11);
-            const char* deptName = (const char*)sqlite3_column_text(stmt, 12);
-            asset.location = location ? location : "";
-            asset.status = status ? status : "在用";
-            asset.remark = remark ? remark : "";
-            asset.categoryName = catName ? catName : "";
-            asset.userName = userName ? userName : "";
-            asset.departmentName = deptName ? deptName : "";
+            BuildAssetFromStmt(stmt, asset);
             sqlite3_finalize(stmt);
             return true;
         }
