@@ -66,6 +66,25 @@ if(MSVC)
     )
     # 设置字符集为 Unicode
     target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
+
+    # Release 模式下的反逆向选项
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_CONFIGURATION_TYPES)
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            $<$<CONFIG:Release>:/O2>           # 最大优化
+            $<$<CONFIG:Release>:/Ob2>          # 内联函数展开
+            $<$<CONFIG:Release>:/Oi>           # 启用内部函数
+            $<$<CONFIG:Release>:/Ot>           # 优先速度
+            $<$<CONFIG:Release>:/GL>           # 全程序优化
+            $<$<CONFIG:Release>:/Gy>           # 函数级链接
+            $<$<CONFIG:Release>:/GS->          # 禁用安全检查（减少特征）
+        )
+        target_link_options(${PROJECT_NAME} PRIVATE
+            $<$<CONFIG:Release>:/LTCG>         # 链接时代码生成
+            $<$<CONFIG:Release>:/OPT:REF>      # 移除未引用函数
+            $<$<CONFIG:Release>:/OPT:ICF>      # 合并相同函数
+            $<$<CONFIG:Release>:/RELEASE>      # 设置校验和
+        )
+    endif()
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
         -Wall
@@ -80,6 +99,24 @@ else()
         -static-libgcc
         -static-libstdc++
     )
+
+    # Release 模式下的反逆向选项 (GCC/MinGW)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -O3                        # 最大优化
+            -fvisibility=hidden        # 隐藏符号
+            -fvisibility-inlines-hidden # 隐藏内联函数符号
+            -ffunction-sections        # 每个函数单独段
+            -fdata-sections            # 每个数据单独段
+            -fno-ident                 # 不输出编译器标识
+            -fmerge-all-constants      # 合并常量
+        )
+        target_link_options(${PROJECT_NAME} PRIVATE
+            -Wl,--gc-sections          # 移除未使用段
+            -Wl,-s                     # 剥离所有符号
+            -Wl,--build-id=none        # 不生成 build-id
+        )
+    endif()
 endif()
 
 # 设置子系统为 Windows
